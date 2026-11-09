@@ -1,10 +1,10 @@
-use std::{fmt::Display, fs::read, ops::Range, path::Path};
+use std::{fs::read, ops::Range, path::Path};
 
-use strum::Display;
+use humansize::{BINARY, format_size, FormatSizeOptions};
 
 #[derive(Debug)]
 pub struct RomImage {
-    pub _data: Vec<u8>,
+    data: Vec<u8>,
     pub header: RomHeader,
 }
 
@@ -14,18 +14,22 @@ impl RomImage {
         let bytes = read(path)?;
         let header = RomHeader::try_from(bytes.as_slice())?;
 
-        Ok(RomImage { _data: bytes, header })
+        Ok(RomImage { data: bytes, header })
+    }
+
+    pub fn data(&self) -> &[u8] {
+    	&self.data
     }
 }
 
-#[derive(Debug, Display)]
+#[derive(Debug, strum::Display)]
 pub enum CgbSupport {
     None,
     Compatible,
     Required,
 }
 
-#[derive(Debug, Display)]
+#[derive(Debug, strum::Display)]
 pub enum CartType {
     #[strum(to_string = "ROM only")]
     RomOnly,
@@ -106,6 +110,8 @@ pub struct RomHeader {
     pub manufacturer_code: String,
     pub cgb_support: CgbSupport,
     pub cart_type: CartType,
+    pub rom_size: usize,
+    pub ram_size: usize,
 }
 
 impl TryFrom<&[u8]> for RomHeader {
@@ -113,6 +119,7 @@ impl TryFrom<&[u8]> for RomHeader {
 
     // Does not support legacy DMG header format.
     fn try_from(bytes: &[u8]) -> anyhow::Result<Self> {
+    	// Validate ROM header.
         const HEADER_START: usize = 0x100;
         const HEADER_SIZE: usize = 0x50;
         const MIN_ROM_SIZE: usize = HEADER_START + HEADER_SIZE;
@@ -121,6 +128,8 @@ impl TryFrom<&[u8]> for RomHeader {
             bytes.len() >= MIN_ROM_SIZE,
             "ROM is too small to contain a complete header"
         );
+
+		// Extract Metadata
 
         // An 11-byte field containing the game title, padded with `0x00`.
         const TITLE_ADDR: Range<usize> = 0x134..0x13F;
@@ -177,12 +186,33 @@ impl TryFrom<&[u8]> for RomHeader {
             flag => CartType::Unknown(flag),
         };
 
+        const ROM_SIZE_ADDR: usize = 0x148;
+        const RAM_SIZE_ADDR: usize = 0x149;
+
+        let flag = bytes[ROM_SIZE_ADDR];
+        let rom_size = match flag {
+            0x00..=0x08 => 32 * 1024 * (1 << flag),
+            _ => anyhow::bail!("Unknown ROM size flag: {flag:#04X}")
+        };
+
+        let flag = bytes[RAM_SIZE_ADDR];
+        let ram_size = match flag {
+            0x00 => 0,
+            0x02 => 8 * 1024,
+            0x03 => 32 * 1024,
+            0x04 => 128 * 1024,
+            0x05 => 64 * 1024,
+            _ => anyhow::bail!("Unknown RAM size flag: {flag:#04X}")
+        };
+
         Ok(
             RomHeader {
                 title,
                 manufacturer_code,
                 cgb_support,
                 cart_type,
+                rom_size,
+                ram_size,
             }
         )
     }
@@ -194,7 +224,7 @@ impl std::fmt::Display for RomHeader {
         writeln!(f, "----------")?;
 
         const PADDING_LENGTH: usize = 18;
-        let mut write_field = |name: &str, value: &dyn Display| -> std::fmt::Result {
+        let mut write_field = |name: &str, value: &dyn std::fmt::Display| -> std::fmt::Result {
             writeln!(f, "{:<PADDING_LENGTH$}: {}", name, value)
         };
 
@@ -202,6 +232,13 @@ impl std::fmt::Display for RomHeader {
         write_field("Manufacturer Code", &self.manufacturer_code)?;
         write_field("CGB Support", &self.cgb_support)?;
         write_field("Cartridge Type", &self.cart_type)?;
+
+        // Format memory values.
+        let options = FormatSizeOptions::from(BINARY).decimal_zeroes(1);
+        let rom_size = format_size(self.rom_size, options);
+        let ram_size = format_size(self.ram_size, options);
+        write_field("ROM Size", &rom_size)?;
+        write_field("RAM Size", &ram_size)?;
 
         Ok(())
     }
