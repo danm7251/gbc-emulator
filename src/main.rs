@@ -1,10 +1,10 @@
-use std::{path::Path, process::ExitCode};
+use std::process::ExitCode;
 
-use crate::rom::RomImage;
+use crate::{cartridge::Cartridge, cpu::Cpu};
 
-mod rom;
-
-const VALIDATE_ROM_FILE: bool = true;
+mod bus;
+mod cartridge;
+mod cpu;
 
 fn main() -> ExitCode {
     match run() {
@@ -16,7 +16,11 @@ fn main() -> ExitCode {
     }
 }
 
+/// Runs the emulator:
+/// - Parses the path to the ROM image from arguments.
+/// - Cycles the CPU infinitely.
 fn run() -> anyhow::Result<()> {
+    // Argument parsing.
     let args: Vec<String> = std::env::args().collect();
 
     if args.len() != 2 {
@@ -25,17 +29,19 @@ fn run() -> anyhow::Result<()> {
 
     let rom_path = &args[1];
 
-    if VALIDATE_ROM_FILE {
-        validate_path(rom_path)?;
+    // Load ROM image.
+    let cartridge = Cartridge::load(rom_path)?;
+
+    #[cfg(debug_assertions)]
+    println!("\n{}", &cartridge.rom.header);
+
+    // Initialise and run CPU.
+    let mut cpu = Cpu::init(cartridge);
+
+    #[cfg(debug_assertions)]
+    println!("Decoding instructions:");
+
+    loop {
+        cpu.tick()?;
     }
-
-    let rom = RomImage::load(rom_path)?;
-
-    print!("{}", rom.header);
-
-    Ok(())
-}
-
-fn validate_path(_path: impl AsRef<Path>) -> anyhow::Result<()> {
-    Ok(())
 }

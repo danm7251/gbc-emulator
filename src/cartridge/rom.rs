@@ -4,7 +4,7 @@ use humansize::{BINARY, format_size, FormatSizeOptions};
 
 #[derive(Debug)]
 pub struct RomImage {
-    data: Vec<u8>,
+    pub data: Vec<u8>,
     pub header: RomHeader,
 }
 
@@ -29,7 +29,7 @@ pub enum CgbSupport {
     Required,
 }
 
-#[derive(Debug, strum::Display)]
+#[derive(Debug, PartialEq, strum::Display)]
 pub enum CartType {
     #[strum(to_string = "ROM only")]
     RomOnly,
