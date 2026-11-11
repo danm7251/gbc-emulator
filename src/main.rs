@@ -10,7 +10,7 @@ fn main() -> ExitCode {
     match run() {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("Error: {e}");
+            eprintln!("[\x1b[1;31mError\x1b[0m] {e}");
             ExitCode::FAILURE
         },
     }

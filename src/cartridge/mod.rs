@@ -23,7 +23,7 @@ impl Cartridge {
 
     pub fn read(&self, addr: u16) -> anyhow::Result<u8> {
         if self.rom.header.cart_type != CartType::RomOnly {
-            anyhow::bail!("Not RomOnly")
+            anyhow::bail!("Cartridge: unsupported cartridge type")
         }
 
         let data = self.rom.data[addr as usize];
