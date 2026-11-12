@@ -1,25 +1,28 @@
 use crate::{cartridge::Cartridge};
 
-// 16-bit address bus
-// 32-bit data bus
-
-/// Implements the memory map between the CPU and other components.
+/// Provides the memory interface between the CPU and the system's components.
+///
+/// The bus routes memory accesses to the appropriate component based on the
+/// requested address. It is responsible for address decoding, while individual
+/// components handle the behaviour of their respective memory regions.
 pub struct Bus {
-    pub cartridge: Cartridge, // Replace with [`Cartridge`] type.
+    pub cartridge: Cartridge,
 }
 
 impl Bus {
+    /// Reads a byte from the specified memory address.
     pub fn read_bytes(&self, addr: u16) -> anyhow::Result<u8> {
         match addr {
             0x0000..=0x7FFF => self.cartridge.read(addr),
-            _ => anyhow::bail!("Bus: read to unimplemented address attempted")
+            _ => anyhow::bail!("[Bus] : Read to unimplemented address {addr:#04X} attempted"),
         }
     }
 
-    pub fn write_bytes(&self, addr: u16) -> anyhow::Result<()> {
+    /// Writes a byte to the specified memory address.
+    pub fn write_bytes(&self, addr: u16, data: u8) -> anyhow::Result<()> {
         match addr {
-            0x0000..=0x7FFF => anyhow::bail!("Bus Error: write to read-only address attempted"),
-            _ => anyhow::bail!("Bus: read to unimplemented address attempted")
+            0x0000..=0x7FFF => anyhow::bail!("Bus Error: write to read-only address {addr:#04X} attempted"),
+            _ => anyhow::bail!("[Bus] : Write to unimplemented address {addr:#04X} attempted"),
         }
     }
 }

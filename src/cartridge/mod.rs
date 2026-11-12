@@ -4,6 +4,7 @@ mod rom;
 
 pub use rom::{
     CartType,
+    CgbSupport,
     RomHeader,
     RomImage,
 };
