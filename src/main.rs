@@ -10,7 +10,7 @@ fn main() -> ExitCode {
     match run() {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("[\x1b[1;31mError\x1b[0m]{e}");
+            eprintln!("[\x1b[1;31mError\x1b[0m] {e}");
             ExitCode::FAILURE
         },
     }
@@ -41,7 +41,10 @@ fn run() -> anyhow::Result<()> {
     #[cfg(debug_assertions)]
     println!("Starting CPU...");
 
+    let mut cycle = 1;
     loop {
+        println!("\n-- Cycle {cycle} --");
         cpu.tick()?;
+        cycle += 1;
     }
 }

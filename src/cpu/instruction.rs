@@ -1252,4 +1252,226 @@ pub enum Instruction {
     /// - T-cycles: 16
     /// - Flags: none
     RST_08 = 0xCF,
+
+    /// Returns if the carry flag is unset.
+    /// - M-cycles: 1
+    /// - T-cycles: 20 (taken) / 8 (not taken)
+    /// - Flags: none
+    RET_NC = 0xD0,
+
+    /// Pops a 16-bit value from the stack into DE.
+    /// - M-cycles: 1
+    /// - T-cycles: 12
+    /// - Flags: none
+    POP_DE = 0xD1,
+
+    /// Jumps to an immediate address if the carry flag is unset.
+    /// - M-cycles: 3
+    /// - T-cycles: 16 (taken) / 12 (not taken)
+    /// - Flags: none
+    JP_NC_a16 = 0xD2,
+
+    /// Calls a subroutine if the carry flag is unset.
+    /// - M-cycles: 3
+    /// - T-cycles: 24 (taken) / 12 (not taken)
+    /// - Flags: none
+    CALL_NC_a16 = 0xD4,
+
+    /// Pushes the value in DE to the stack.
+    /// - M-cycles: 1
+    /// - T-cycles: 16
+    /// - Flags: none
+    PUSH_DE = 0xD5,
+
+    /// Subtracts an immediate 8-bit value, excluding the carry flag, from A.
+    /// - M-cycles: 2
+    /// - T-cycles: 8
+    /// - Flags: Z=*, N=1, H=*, C=*
+    SUB_A_n8 = 0xD6,
+
+    /// ???
+    /// - M-cycles: 1
+    /// - T-cycles: 16
+    /// - Flags: none
+    RST_10 = 0xD7,
+
+    /// Returns if the carry flag is set.
+    /// - M-cycles: 1
+    /// - T-cycles: 20 (taken) / 8 (not taken)
+    /// - Flags: none
+    RET_C = 0xD8,
+
+    /// Returns unconditionally and sets the interrupt master enable flag.
+    /// - M-cycles: 1
+    /// - T-cycles: 16
+    /// - Flags: none
+    RETI = 0xD9,
+
+    /// Jumps to an immediate address if the carry flag is set.
+    /// - M-cycles: 3
+    /// - T-cycles: 16 (taken) / 12 (not taken)
+    /// - Flags: none
+    JP_C_a16 = 0xDA,
+
+    /// Calls a subroutine if the carry flag is set.
+    /// - M-cycles: 3
+    /// - T-cycles: 24 (taken) / 12 (not taken)
+    /// - Flags: none
+    CALL_C_a16 = 0xDC,
+
+    /// Subtracts an immediate 8-bit value and the carry flag from A.
+    /// - M-cycles: 2
+    /// - T-cycles: 8
+    /// - Flags: Z=*, N=1, H=*, C=*
+    SBC_A_n8 = 0xDE,
+
+    /// ???
+    /// - M-cycles: 1
+    /// - T-cycles: 16
+    /// - Flags: none
+    RST_18 = 0xDF,
+
+    /// Loads the value in A into an address at an immediate unsigned 8-bit offset from 0xF00.
+    /// - M-cycles: 2
+    /// - T-cycles: 12
+    /// - Flags: none
+    LDH_a8_A = 0xE0,
+
+    /// Pops a 16-bit value from the stack into HL.
+    /// - M-cycles: 1
+    /// - T-cycles: 12
+    /// - Flags: none
+    POP_HL = 0xE1,
+
+    /// Loads the value in A into an address at the unsigned offset in C from 0xF00.
+    /// - M-cycles: 1
+    /// - T-cycles: 8
+    /// - Flags: none
+    LDH_ADDR_C_A = 0xE2,
+
+    /// Pushes the value in HL to the stack.
+    /// - M-cycles:
+    /// - T-cycles: 16
+    /// - Flags: none
+    PUSH_HL = 0xE5,
+
+    /// Bitwise A AND an immediate unsigned 8-bit value into A.
+    /// - M-cycles: 2
+    /// - T-cycles: 8
+    /// - Flags: Z=*, N=0, H=1, C=0
+    AND_A_n8 = 0xE6,
+
+    /// ???
+    /// - M-cycles: 1
+    /// - T-cycles: 16
+    /// - Flags: none
+    RST_20 = 0xE7,
+
+    /// Adds an immediate signed 8-bit value, excluding the carry flag, to SP.
+    /// - M-cycles:
+    /// - T-cycles: 16
+    /// - Flags: Z=0, N=0, H=*, C=*
+    ADD_SP_e8 = 0xE8,
+
+    /// Unconditionally jumps to HL.
+    /// - M-cycles: 1
+    /// - T-cycles: 4
+    /// - Flags: none
+    JP_HL = 0xE9,
+
+    /// Loads the value in A into an immediate address.
+    /// - M-cycles: 3
+    /// - T-cycles: 16
+    /// - Flags: none
+    LD_a16_A = 0xEA,
+
+    /// Bitwise XORs A and an immediate unsigned value into A.
+    /// - M-cycles: 2
+    /// - T-cycles: 8
+    /// - Flags: Z=*, N=0, H=0, C=0
+    XOR_A_n8 = 0xEE,
+
+    /// ???
+    /// - M-cycles:
+    /// - T-cycles: 16
+    /// - Flags: none
+    RST_28 = 0xEF,
+
+    /// Loads a value from address at an unsigned offset from 0xFF00 into A.
+    /// - M-cycles: 2
+    /// - T-cycles: 12
+    /// - Flags: none
+    LDH_A_a8 = 0xF0,
+
+    /// Pops a value from the stack into AF.
+    /// - M-cycles: 1
+    /// - T-cycles: 12
+    /// - Flags: Z=*, N=*, H=*, C=*
+    POP_AF = 0xF1,
+
+    /// Loads a value from an unsigned offset in C from 0xFF00 into A.
+    /// - M-cycles: 1
+    /// - T-cycles: 8
+    /// - Flags: none
+    LDH_A_ADDR_C = 0xF2,
+
+    /// Disables interrupts by unsetting the interrupt master enable flag.
+    /// - M-cycles: 1
+    /// - T-cycles: 4
+    /// - Flags: none
+    DI = 0xF3,
+
+    /// Pushes the value in AF to the stack.
+    /// - M-cycles: 1
+    /// - T-cycles: 16
+    /// - Flags: none
+    PUSH_AF = 0xF5,
+
+    /// Bitwise ORs A and an immediate unsigned value into A.
+    /// - M-cycles: 2
+    /// - T-cycles: 8
+    /// - Flags: Z=*, N=0, H=0, C=0
+    OR_A_n8 = 0xF6,
+
+    /// ???
+    /// - M-cycles: 1
+    /// - T-cycles: 16
+    /// - Flags: none
+    RST_30 = 0xF7,
+
+    /// Loads the value in SP plus a signed immediate 8-bit offset into HL.
+    /// - M-cycles: 2
+    /// - T-cycles: 12
+    /// - Flags: Z=0, N=0, H=*, C=*
+    LD_HL_SP_e8 = 0xF8,
+
+    /// Loads the value in HL into SP.
+    /// - M-cycles: 1
+    /// - T-cycles: 8
+    /// - Flags: none
+    LD_SP_HL = 0xF9,
+
+    /// Loads the value at an immediate address into A.
+    /// - M-cycles: 3
+    /// - T-cycles: 16
+    /// - Flags: none
+    LD_A_a16 = 0xFA,
+
+    /// Enables interrupts by setting the interrupt master enable flag after the next instruction.
+    /// - M-cycles: 1
+    /// - T-cycles: 4
+    /// - Flags: none
+    EI = 0xFB,
+
+    /// Compares an immediate unsigned 8-bit value with A by subtracting it from A and discarding the result.
+    /// - M-cycles: 2
+    /// - T-cycles: 8
+    /// - Flags: Z=*, N=1, H=*, C=*
+    CP_A_n8 = 0xFE,
+
+    /// ???
+    /// - M-cycles: 1
+    /// - T-cycles: 16
+    /// - Flags: none
+    RST_38 = 0xFF,
 }

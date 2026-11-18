@@ -5,16 +5,14 @@ pub struct Flags {
     pub c: bool,
 }
 
+/// Representations of all 8-bit registers except the flag register.
+#[derive(Clone, Copy, Debug)]
 pub enum Register8 {
-    B,
-    C,
-    D,
-    E,
-    H,
-    L,
-    A,
+    B, C, D, E, H, L, A,
 }
 
+/// Representations of all 16-bit registers except the program counter.
+#[derive(Clone, Copy, Debug)]
 pub enum Register16 {
     BC,
     DE,
@@ -23,15 +21,14 @@ pub enum Register16 {
 }
 
 pub struct Registers {
-    pub a: u8,
+    a: u8,
     pub f: Flags,
-
-    pub b: u8,
-    pub c: u8,
-    pub d: u8,
-    pub e: u8,
-    pub h: u8,
-    pub l: u8,
+    b: u8,
+    c: u8,
+    d: u8,
+    e: u8,
+    h: u8,
+    l: u8,
 
     sp: u16,
     pc: u16,
@@ -94,8 +91,8 @@ impl Registers {
         }
     }
 
-    pub fn get_mut_r8(&mut self, r: Register8) -> &mut u8 {
-        match r {
+    pub fn set_r8(&mut self, r: Register8, value: u8) {
+        let r_ptr = match r {
             Register8::B => &mut self.b,
             Register8::C => &mut self.c,
             Register8::D => &mut self.d,
@@ -103,63 +100,43 @@ impl Registers {
             Register8::H => &mut self.h,
             Register8::L => &mut self.l,
             Register8::A => &mut self.a,
-        }
+        };
+
+        *r_ptr = value;
+
+        println!("[{:?} Set][{:#04X}]", r, value);
     }
 
     pub fn get_r16(&self, r: Register16) -> u16 {
-        match r {
-            Register16::BC => self.bc(),
-            Register16::DE => self.de(),
-            Register16::HL => self.hl(),
-            Register16::SP => self.sp(),
-        }
+        let [high_reg, low_reg] = match r {
+            Register16::BC => [self.b, self.c],
+            Register16::DE => [self.d, self.e],
+            Register16::HL => [self.h, self.l],
+            Register16::SP => {
+                return self.sp;
+            },
+        };
+
+        u16::from_be_bytes([high_reg, low_reg])
     }
 
     pub fn set_r16(&mut self, r: Register16, value: u16) {
-        match r {
-            Register16::BC => self.set_bc(value),
-            Register16::DE => self.set_de(value),
-            Register16::HL => self.set_hl(value),
-            Register16::SP => self.set_sp(value),
-        }
-    }
+        let [high_byte, low_byte] = value.to_be_bytes();
 
-    fn bc(&self) -> u16 {
-        u16::from_be_bytes([self.b, self.c])
-    }
+        let [high_reg, low_reg] = match r {
+            Register16::BC => [&mut self.b, &mut self.c],
+            Register16::DE => [&mut self.d, &mut self.e],
+            Register16::HL => [&mut self.h, &mut self.l],
+            Register16::SP => {
+                self.sp = value;
+                return;
+            },
+        };
 
-    fn set_bc(&mut self, value: u16) {
-        let [high, low] = value.to_be_bytes();
-        self.b = high;
-        self.c = low;
-    }
+        *high_reg = high_byte;
+        *low_reg = low_byte;
 
-    fn de(&self) -> u16 {
-        u16::from_be_bytes([self.d, self.e])
-    }
-
-    fn set_de(&mut self, value: u16) {
-        let [high, low] = value.to_be_bytes();
-        self.d = high;
-        self.e = low;
-    }
-
-    fn hl(&self) -> u16 {
-        u16::from_be_bytes([self.h, self.l])
-    }
-
-    fn set_hl(&mut self, value: u16) {
-        let [high, low] = value.to_be_bytes();
-        self.h = high;
-        self.l = low;
-    }
-
-    pub fn sp(&self) -> u16 {
-        self.sp
-    }
-
-    pub fn set_sp(&mut self, value: u16) {
-        self.sp = value;
+        println!("[{:?} Set][{:#06X}]", r, value);
     }
 
 
@@ -169,9 +146,11 @@ impl Registers {
 
     pub fn increment_pc(&mut self) {
         self.pc = self.pc.wrapping_add(1);
+        println!("[PC Increment][{:#06X}]", self.pc);
     }
 
     pub fn set_pc(&mut self, value: u16) {
         self.pc = value;
+        println!("[PC Set][{:#06X}]", self.pc);
     }
 }

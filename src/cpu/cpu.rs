@@ -9,11 +9,22 @@ use super::{
     registers::{Register16, Register8, Registers},
 };
 
+// High memory address.
+const HIGH_MEMORY: u16 = 0xFF00;
+
+#[derive(Debug, PartialEq)]
+enum IMEState {
+    Disabled,
+    Pending,
+    Enabled,
+}
+
 /// Emulates the Game Boy CPU, managing its registers, instruction execution
 /// and interactions with the system bus.
 pub struct Cpu {
     bus: Bus,
     registers: Registers,
+    ime: IMEState,
 }
 
 impl Cpu {
@@ -27,26 +38,20 @@ impl Cpu {
             CgbSupport::Compatible | CgbSupport::Required => Registers::cgb_mode(),
         };
 
-        let bus = Bus { cartridge };
+        let bus = Bus::init(cartridge);
+        let ime = IMEState::Disabled;
 
         Cpu {
             bus,
             registers,
+            ime,
         }
     }
 
     /// Advances the CPU by fetching, decoding and executing the instruction
     /// at the current program counter.
     pub fn tick(&mut self) -> anyhow::Result<()> {
-        // Cache PC value for debugging output.
-        #[cfg(debug_assertions)]
-        let pc = self.registers.pc();
-
         let opcode = self.fetch_u8()?;
-
-        #[cfg(debug_assertions)]
-        println!("[\x1b[1;32mFetched\x1b[0m] : {:#04X}", pc);
-
         let instruction = self.decode(opcode)?;
         self.execute(&instruction)
     }
@@ -74,7 +79,7 @@ impl Cpu {
             .with_context(|| format!("[CPU] : Failed to decode opcode {opcode:#04X}"))?;
 
         #[cfg(debug_assertions)]
-        println!("[\x1b[1;34mDecoded\x1b[0m] : {instruction:?}");
+        println!("\x1b[1m[Decoded][{instruction:?}]\x1b[0m");
 
         Ok(instruction)
     }
@@ -86,74 +91,88 @@ impl Cpu {
 
         match instruction {
             // Miscellaneous
-            NOP => Ok(()),
+            NOP => (),
+
+            // Interrupts
+            DI => {
+                self.ime = IMEState::Disabled;
+                println!("[IME Set][{:?}]", self.ime);
+            },
+            EI => { 
+                self.ime = IMEState::Pending;
+                println!("[IME Set][{:?}]", self.ime);
+
+                self.tick()?;
+
+                // If no other instruction (such as DI) has modified the IME, then enable it.
+                if self.ime == IMEState::Pending {
+                    self.ime = IMEState::Enabled;
+                    println!("[IME Set][{:?}]", self.ime);
+                }
+            },
 
             // 8-bit loads from immediate value to register.
-            LD_B_n8 => self.load_r8_n8(Register8::B),
-            LD_C_n8 => self.load_r8_n8(Register8::C),
-            LD_D_n8 => self.load_r8_n8(Register8::D),
-            LD_E_n8 => self.load_r8_n8(Register8::E),
-            LD_H_n8 => self.load_r8_n8(Register8::H),
-            LD_L_n8 => self.load_r8_n8(Register8::L),
-            LD_A_n8 => self.load_r8_n8(Register8::A),
+            LD_B_n8 => self.load_r8_n8(Register8::B)?,
+            LD_C_n8 => self.load_r8_n8(Register8::C)?,
+            LD_D_n8 => self.load_r8_n8(Register8::D)?,
+            LD_E_n8 => self.load_r8_n8(Register8::E)?,
+            LD_H_n8 => self.load_r8_n8(Register8::H)?,
+            LD_L_n8 => self.load_r8_n8(Register8::L)?,
+            LD_A_n8 => self.load_r8_n8(Register8::A)?,
 
             // 8-bit loads from memory to register.
-            LD_B_ADDR_HL => self.load_r8_addr_hl(Register8::B),
-            LD_C_ADDR_HL => self.load_r8_addr_hl(Register8::C),
-            LD_D_ADDR_HL => self.load_r8_addr_hl(Register8::D),
-            LD_E_ADDR_HL => self.load_r8_addr_hl(Register8::E),
-            LD_H_ADDR_HL => self.load_r8_addr_hl(Register8::H),
-            LD_L_ADDR_HL => self.load_r8_addr_hl(Register8::L),
-            LD_A_ADDR_HL => self.load_r8_addr_hl(Register8::A),
+            LD_B_ADDR_HL => self.load_r8_addr_hl(Register8::B)?,
+            LD_C_ADDR_HL => self.load_r8_addr_hl(Register8::C)?,
+            LD_D_ADDR_HL => self.load_r8_addr_hl(Register8::D)?,
+            LD_E_ADDR_HL => self.load_r8_addr_hl(Register8::E)?,
+            LD_H_ADDR_HL => self.load_r8_addr_hl(Register8::H)?,
+            LD_L_ADDR_HL => self.load_r8_addr_hl(Register8::L)?,
+            LD_A_ADDR_HL => self.load_r8_addr_hl(Register8::A)?,
 
             // 8-bit loads from register to memory.
-            LD_ADDR_BC_A => self.load_addr_r16_a(Register16::BC),
-            LD_ADDR_DE_A => self.load_addr_r16_a(Register16::DE),
+            LD_ADDR_BC_A => self.load_addr_r16_a(Register16::BC)?,
+            LD_ADDR_DE_A => self.load_addr_r16_a(Register16::DE)?,
 
             // 8-bit loads from register to memory, with increment/decrement.
             LD_ADDR_INC_HL_A => {
                 let addr = self.registers.get_r16(Register16::HL);
                 self.registers.set_r16(Register16::HL, addr.wrapping_add(1));
                 let data = self.registers.get_r8(Register8::A);
-                self.bus.write_bytes(addr, data)
+                self.bus.write_bytes(addr, data)?;
             },
             LD_ADDR_DEC_HL_A => {
                 let addr = self.registers.get_r16(Register16::HL);
                 self.registers.set_r16(Register16::HL, addr.wrapping_sub(1));
                 let data = self.registers.get_r8(Register8::A);
-                self.bus.write_bytes(addr, data)
+                self.bus.write_bytes(addr, data)?;
             },
 
             // 8-bit loads from memory to register.
-            LD_A_ADDR_BC => self.load_a_addr_r16(Register16::BC),
-            LD_A_ADDR_DE => self.load_a_addr_r16(Register16::DE),
+            LD_A_ADDR_BC => self.load_a_addr_r16(Register16::BC)?,
+            LD_A_ADDR_DE => self.load_a_addr_r16(Register16::DE)?,
 
             // 8-bit loads from memory to register, with increment/decrement.
             LD_A_ADDR_INC_HL => {
                 let addr = self.registers.get_r16(Register16::HL);
                 self.registers.set_r16(Register16::HL, addr.wrapping_add(1));
                 let data = self.bus.read_bytes(addr)?;
-                *self.registers.get_mut_r8(Register8::A) = data;
-
-                Ok(())
+                self.registers.set_r8(Register8::A, data);
             },
             LD_A_ADDR_DEC_HL => {
                 let addr = self.registers.get_r16(Register16::HL);
                 self.registers.set_r16(Register16::HL, addr.wrapping_sub(1));
                 let data = self.bus.read_bytes(addr)?;
-                *self.registers.get_mut_r8(Register8::A) = data;
-
-                Ok(())
+                self.registers.set_r8(Register8::A, data);
             },
 
             // 8-bit loads from register to memory.
-            LD_ADDR_HL_B => self.load_addr_hl_r8(Register8::B),
-            LD_ADDR_HL_C => self.load_addr_hl_r8(Register8::C),
-            LD_ADDR_HL_D => self.load_addr_hl_r8(Register8::D),
-            LD_ADDR_HL_E => self.load_addr_hl_r8(Register8::E),
-            LD_ADDR_HL_H => self.load_addr_hl_r8(Register8::H),
-            LD_ADDR_HL_L => self.load_addr_hl_r8(Register8::L),
-            LD_ADDR_HL_A => self.load_addr_hl_r8(Register8::A),
+            LD_ADDR_HL_B => self.load_addr_hl_r8(Register8::B)?,
+            LD_ADDR_HL_C => self.load_addr_hl_r8(Register8::C)?,
+            LD_ADDR_HL_D => self.load_addr_hl_r8(Register8::D)?,
+            LD_ADDR_HL_E => self.load_addr_hl_r8(Register8::E)?,
+            LD_ADDR_HL_H => self.load_addr_hl_r8(Register8::H)?,
+            LD_ADDR_HL_L => self.load_addr_hl_r8(Register8::L)?,
+            LD_ADDR_HL_A => self.load_addr_hl_r8(Register8::A)?,
 
             // 8-bit loads from register to B register.
             LD_B_B => self.load_r8_r8(Register8::B, Register8::B),
@@ -218,39 +237,123 @@ impl Cpu {
             LD_A_L => self.load_r8_r8(Register8::A, Register8::L),
             LD_A_A => self.load_r8_r8(Register8::A, Register8::A),
 
-            // 16-bit loads from immediate value to register.
-            LD_BC_n16 => self.load_r16_n16(Register16::BC),
-            LD_DE_n16 => self.load_r16_n16(Register16::DE),
-            LD_HL_n16 => self.load_r16_n16(Register16::HL),
-            LD_SP_n16 => self.load_r16_n16(Register16::SP),
-
-            // Jumps
-            JP_a16 => {
-                let addr = self.fetch_u16()?;
-                self.registers.set_pc(addr);
-
-                Ok(())
+            // 8-bit loads to high memory.
+            LDH_a8_A => {
+                let value = self.registers.get_r8(Register8::A);
+                let addr_offset = self.fetch_u8()?;
+                let addr = HIGH_MEMORY + addr_offset as u16;
+                self.bus.write_bytes(addr, value)?;
+            }
+            LDH_A_a8 => {
+                let addr_offset = self.fetch_u8()?;
+                let addr = HIGH_MEMORY + addr_offset as u16;
+                let value = self.bus.read_bytes(addr)?;
+                self.registers.set_r8(Register8::A, value);
+            }
+            LDH_ADDR_C_A => {
+                let value = self.registers.get_r8(Register8::A);
+                let addr_offset = self.registers.get_r8(Register8::C);
+                let addr = HIGH_MEMORY + addr_offset as u16;
+                self.bus.write_bytes(addr, value)?;
+            }
+            LDH_A_ADDR_C => {
+                let addr_offset = self.registers.get_r8(Register8::A);
+                let addr = HIGH_MEMORY + addr_offset as u16;
+                let value = self.registers.get_r8(Register8::C);
+                self.bus.write_bytes(addr, value)?;
             }
 
+            // 16-bit loads from immediate value to register.
+            LD_BC_n16 => self.load_r16_n16(Register16::BC)?,
+            LD_DE_n16 => self.load_r16_n16(Register16::DE)?,
+            LD_HL_n16 => self.load_r16_n16(Register16::HL)?,
+            LD_SP_n16 => self.load_r16_n16(Register16::SP)?,
+
+            // 8-bit register increments.
+            INC_B => self.inc_r8(Register8::B),
+            INC_C => self.inc_r8(Register8::C),
+            INC_D => self.inc_r8(Register8::D),
+            INC_E => self.inc_r8(Register8::E),
+            INC_H => self.inc_r8(Register8::H),
+            INC_L => self.inc_r8(Register8::L),
+            INC_A => self.inc_r8(Register8::A),
+
+            // 8-bit memory increment.
+            INC_ADDR_HL => {
+                let addr = self.registers.get_r16(Register16::HL);
+                let data = self.bus.read_bytes(addr)?;
+                self.bus.write_bytes(addr, data.wrapping_add(1))?;
+            },
+
+            // 8-bit register decrements.
+            DEC_B => self.dec_r8(Register8::B),
+            DEC_C => self.dec_r8(Register8::C),
+            DEC_D => self.dec_r8(Register8::D),
+            DEC_E => self.dec_r8(Register8::E),
+            DEC_H => self.dec_r8(Register8::H),
+            DEC_L => self.dec_r8(Register8::L),
+            DEC_A => self.dec_r8(Register8::A),
+
+            // 8-bit memory decrement.
+            DEC_ADDR_HL => {
+                let addr = self.registers.get_r16(Register16::HL);
+                let data = self.bus.read_bytes(addr)?;
+                self.bus.write_bytes(addr, data.wrapping_sub(1))?;
+            },
+
+            // 16-bit register increments.
+            INC_BC => self.inc_r16(Register16::BC),
+            INC_DE => self.inc_r16(Register16::DE),
+            INC_HL => self.inc_r16(Register16::HL),
+            INC_SP => self.inc_r16(Register16::SP),
+
+            // 16-bit register decrements.
+            DEC_BC => self.dec_r16(Register16::BC),
+            DEC_DE => self.dec_r16(Register16::DE),
+            DEC_HL => self.dec_r16(Register16::HL),
+            DEC_SP => self.dec_r16(Register16::SP),
+
+            // 16-bit register addition.
+            ADD_HL_BC => self.add_hl_r16(Register16::BC),
+            ADD_HL_DE => self.add_hl_r16(Register16::DE),
+            ADD_HL_HL => self.add_hl_r16(Register16::HL),
+            ADD_HL_SP => self.add_hl_r16(Register16::SP),
+
+            // Relative jumps.
+            JR_e8    => self.jump_relative(Condition::None)?,
+            JR_NZ_e8 => self.jump_relative(Condition::ZeroUnset)?,
+            JR_Z_e8  => self.jump_relative(Condition::ZeroSet)?,
+            JR_NC_e8 => self.jump_relative(Condition::CarryUnset)?,
+            JR_C_e8  => self.jump_relative(Condition::CarrySet)?,
+
+            // Direct jumps.
+            JP_a16    => self.jump_direct(Condition::None)?,
+            JP_NZ_a16 => self.jump_direct(Condition::ZeroUnset)?,
+            JP_Z_a16  => self.jump_direct(Condition::ZeroSet)?,
+            JP_NC_a16 => self.jump_direct(Condition::CarryUnset)?,
+            JP_C_a16  => self.jump_direct(Condition::CarrySet)?,
+            JP_HL     => {
+                let value = self.registers.get_r16(Register16::HL);
+                self.registers.set_pc(value);
+            },
+
             XOR_A_A => {
-                self.registers.a = 0x00;
+                self.registers.set_r8(Register8::A, 0x00);
                 self.registers.f.z = true;
                 self.registers.f.n = false;
                 self.registers.f.h = false;
                 self.registers.f.c = false;
-
-                Ok(())
             }
 
             _ => anyhow::bail!("Failed to execute instruction {:?}", instruction)
         }
+
+        Ok(())
     }
 
     fn load_r8_n8(&mut self, r: Register8) -> anyhow::Result<()> {
         let data = self.fetch_u8()?;
-        let r = self.registers.get_mut_r8(r);
-
-        *r = data;
+        self.registers.set_r8(r, data);
 
         Ok(())
     }
@@ -258,15 +361,15 @@ impl Cpu {
     fn load_addr_r16_a(&mut self, r16: Register16) -> anyhow::Result<()> {
         let addr = self.registers.get_r16(r16);
         let data = self.registers.get_r8(Register8::A);
-        self.bus.write_bytes(addr, data)
+        self.bus.write_bytes(addr, data)?;
+
+        Ok(())
     }
 
     fn load_a_addr_r16(&mut self, r16: Register16) -> anyhow::Result<()> {
         let addr = self.registers.get_r16(r16);
         let data = self.bus.read_bytes(addr)?;
-        let r = self.registers.get_mut_r8(Register8::A);
-
-        *r = data;
+        self.registers.set_r8(Register8::A, data);
 
         Ok(())
     }
@@ -274,9 +377,7 @@ impl Cpu {
     fn load_r8_addr_hl(&mut self, r: Register8) -> anyhow::Result<()> {
         let addr = self.registers.get_r16(Register16::HL);
         let data = self.bus.read_bytes(addr)?;
-        let r = self.registers.get_mut_r8(r);
-
-        *r = data;
+        self.registers.set_r8(r, data);
 
         Ok(())
     }
@@ -284,16 +385,14 @@ impl Cpu {
     fn load_addr_hl_r8(&mut self, r: Register8) -> anyhow::Result<()> {
         let addr = self.registers.get_r16(Register16::HL);
         let data = self.registers.get_r8(r);
-        self.bus.write_bytes(addr, data)
-    }
-
-    fn load_r8_r8(&mut self, r1: Register8, r2: Register8) -> anyhow::Result<()> {
-        let data = self.registers.get_r8(r2);
-        let r = self.registers.get_mut_r8(r1);
-
-        *r = data;
+        self.bus.write_bytes(addr, data)?;
 
         Ok(())
+    }
+
+    fn load_r8_r8(&mut self, r1: Register8, r2: Register8) {
+        let data = self.registers.get_r8(r2);
+        self.registers.set_r8(r1, data);
     }
 
     fn load_r16_n16(&mut self, r: Register16) -> anyhow::Result<()> {
@@ -302,4 +401,66 @@ impl Cpu {
 
         Ok(())
     }
+
+    fn inc_r8(&mut self, r: Register8) {
+        let new_value = self.registers.get_r8(r).wrapping_add(1);
+        self.registers.set_r8(r, new_value);
+    }
+
+    fn dec_r8(&mut self, r: Register8) {
+        let new_value = self.registers.get_r8(r).wrapping_sub(1);
+        self.registers.set_r8(r, new_value);
+    }
+
+    fn inc_r16(&mut self, r: Register16) {
+        let new_value = self.registers.get_r16(r).wrapping_add(1);
+        self.registers.set_r16(r, new_value);
+    }
+
+    fn dec_r16(&mut self, r: Register16) {
+        let new_value = self.registers.get_r16(r).wrapping_sub(1);
+        self.registers.set_r16(r, new_value);
+    }
+
+    fn add_hl_r16(&mut self, r: Register16) {
+        let rhs = self.registers.get_r16(r);
+        let value = self.registers.get_r16(Register16::HL).wrapping_add(rhs);
+        self.registers.set_r16(Register16::HL, value);
+    }
+
+    fn jump_relative(&mut self, condition: Condition) -> anyhow::Result<()> {
+        let offset = self.fetch_u8()? as i8;
+        let valid = self.eval_flag_condition(condition);
+        if valid {
+            self.registers.set_pc(self.registers.pc().wrapping_add_signed(offset as i16));
+        }
+
+        Ok(())
+    }
+
+    fn jump_direct(&mut self, condition: Condition) -> anyhow::Result<()> {
+        let addr = self.fetch_u16()?;
+        let valid = self.eval_flag_condition(condition);
+        if valid { self.registers.set_pc(addr); }
+
+        Ok(())
+    }
+
+    fn eval_flag_condition(&self, condition: Condition) -> bool {
+        match condition {
+            Condition::None => true,
+            Condition::ZeroSet => self.registers.f.z,
+            Condition::ZeroUnset => !self.registers.f.z,
+            Condition::CarrySet => self.registers.f.c,
+            Condition::CarryUnset => !self.registers.f.c,
+        }
+    }
+}
+
+enum Condition {
+    None,
+    ZeroSet,
+    ZeroUnset,
+    CarrySet,
+    CarryUnset,
 }
