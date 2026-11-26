@@ -1,11 +1,12 @@
 use std::process::ExitCode;
 
-use crate::{cartridge::Cartridge, cpu::Cpu};
+use crate::{bus::Bus, cartridge::Cartridge, cpu::Cpu, ppu::Ppu};
 
 mod bus;
 mod cartridge;
 mod cpu;
 mod io_registers;
+mod ppu;
 mod trace;
 
 fn main() -> ExitCode {
@@ -40,13 +41,20 @@ fn run() -> anyhow::Result<()> {
     println!("\n{}", &cartridge.rom.header);
 
     // Initialise and run CPU.
-    let mut cpu = Cpu::init(cartridge);
+    let mut cpu = Cpu::init(&cartridge.rom.header.cgb_support);
+    let mut ppu = Ppu::dmg_mode();
+    let mut bus = Bus::init(cartridge);
 
     #[cfg(debug_assertions)]
     println!("Starting CPU...");
 
     loop {
-        cpu.tick()?;
+        cpu.tick(&mut bus)?;
+
+        // Non-accurate timing, approximation.
+        for _ in 0..4 {
+            ppu.tick(&mut bus)?;
+        }
 
         #[cfg(debug_assertions)]
         println!();

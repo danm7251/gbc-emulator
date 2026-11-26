@@ -33,7 +33,7 @@ impl Bus {
     }
 
     /// Reads a byte from the specified memory address.
-    pub fn read_bytes(&self, addr: u16) -> anyhow::Result<u8> {
+    pub fn read(&self, addr: u16) -> anyhow::Result<u8> {
         match addr {
             0x0000..=0x7FFF => self.cartridge.read(addr),
             0x8000..=0x9FFF => {
@@ -68,7 +68,7 @@ impl Bus {
     }
 
     /// Writes a byte to the specified memory address.
-    pub fn write_bytes(&mut self, addr: u16, data: u8) -> anyhow::Result<()> {
+    pub fn write(&mut self, addr: u16, data: u8) -> anyhow::Result<()> {
         match addr {
             0x0000..=0x7FFF => {
                 let e = anyhow!("Write at read-only address {addr:#06X} attempted");
@@ -146,7 +146,7 @@ impl Bus {
                 } else {
                     wbk = self.io_registers.read(WBK)?;
                 }
-                
+
                 tracing::info!("[Bank {wbk}][{data:#04X} @ {addr:#06X}]");
                 Ok(self.wram[wbk as usize + 1][(addr - (WRAM_START + WRAM_SIZE)) as usize] = data)
             },
