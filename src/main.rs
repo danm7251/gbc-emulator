@@ -52,9 +52,11 @@ fn run() -> anyhow::Result<()> {
         cpu.tick(&mut bus)?;
 
         // Non-accurate timing, approximation.
-        for _ in 0..4 {
+        for _ in 0..(cpu.m_cycles_elapsed * 4) {
             ppu.tick(&mut bus)?;
         }
+
+        cpu.m_cycles_elapsed = 0;
 
         #[cfg(debug_assertions)]
         println!();

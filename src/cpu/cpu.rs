@@ -1,7 +1,7 @@
 use anyhow::Context;
 
 use crate::{
-    bus::Bus, cartridge::{Cartridge, CgbSupport},
+    bus::Bus, cartridge::{CgbSupport},
 };
 
 use super::{
@@ -23,6 +23,7 @@ enum IMEState {
 /// and interactions with the system bus.
 pub struct Cpu {
     cycle: usize,
+    pub m_cycles_elapsed: usize,
     registers: Registers,
     ime: IMEState,
 }
@@ -42,6 +43,7 @@ impl Cpu {
 
         Cpu {
             cycle: 0,
+            m_cycles_elapsed: 0,
             registers,
             ime,
         }
@@ -98,15 +100,17 @@ impl Cpu {
 
         match instruction {
             // Miscellaneous
-            NOP => (),
+            NOP => { self.m_cycles_elapsed += 1; },
 
             // Interrupts
             DI => {
                 self.ime = IMEState::Disabled;
+                self.m_cycles_elapsed += 1;
                 tracing::info!("[IME Set][{:?}]", self.ime);
             },
             EI => { 
                 self.ime = IMEState::Pending;
+                self.m_cycles_elapsed += 1;
                 tracing::info!("[IME Set][{:?}]", self.ime);
 
                 self.tick(bus)?;
@@ -146,12 +150,14 @@ impl Cpu {
                 self.registers.set_r16(Register16::HL, addr.wrapping_add(1));
                 let data = self.registers.get_r8(Register8::A);
                 bus.write(addr, data)?;
+                self.m_cycles_elapsed += 2;
             },
             LD_ADDR_DEC_HL_A => {
                 let addr = self.registers.get_r16(Register16::HL);
                 self.registers.set_r16(Register16::HL, addr.wrapping_sub(1));
                 let data = self.registers.get_r8(Register8::A);
                 bus.write(addr, data)?;
+                self.m_cycles_elapsed += 2;
             },
 
             // 8-bit loads from memory to register.
@@ -164,12 +170,14 @@ impl Cpu {
                 self.registers.set_r16(Register16::HL, addr.wrapping_add(1));
                 let data = bus.read(addr)?;
                 self.registers.set_r8(Register8::A, data);
+                self.m_cycles_elapsed += 2;
             },
             LD_A_ADDR_DEC_HL => {
                 let addr = self.registers.get_r16(Register16::HL);
                 self.registers.set_r16(Register16::HL, addr.wrapping_sub(1));
                 let data = bus.read(addr)?;
                 self.registers.set_r8(Register8::A, data);
+                self.m_cycles_elapsed += 2;
             },
 
             // 8-bit loads from register to memory.
@@ -250,24 +258,28 @@ impl Cpu {
                 let addr_offset = self.fetch_u8(bus)?;
                 let addr = HIGH_MEMORY + addr_offset as u16;
                 bus.write(addr, value)?;
+                self.m_cycles_elapsed += 3;
             }
             LDH_A_a8 => {
                 let addr_offset = self.fetch_u8(bus)?;
                 let addr = HIGH_MEMORY + addr_offset as u16;
                 let value = bus.read(addr)?;
                 self.registers.set_r8(Register8::A, value);
+                self.m_cycles_elapsed += 3;
             }
             LDH_ADDR_C_A => {
                 let value = self.registers.get_r8(Register8::A);
                 let addr_offset = self.registers.get_r8(Register8::C);
                 let addr = HIGH_MEMORY + addr_offset as u16;
                 bus.write(addr, value)?;
+                self.m_cycles_elapsed += 2;
             }
             LDH_A_ADDR_C => {
                 let addr_offset = self.registers.get_r8(Register8::A);
                 let addr = HIGH_MEMORY + addr_offset as u16;
                 let value = self.registers.get_r8(Register8::C);
                 bus.write(addr, value)?;
+                self.m_cycles_elapsed += 2;
             }
 
             // 16-bit loads from immediate value to register.
@@ -290,6 +302,7 @@ impl Cpu {
                 let addr = self.registers.get_r16(Register16::HL);
                 let data = bus.read(addr)?;
                 bus.write(addr, data.wrapping_add(1))?;
+                self.m_cycles_elapsed += 3;
             },
 
             // 8-bit register decrements.
@@ -306,6 +319,7 @@ impl Cpu {
                 let addr = self.registers.get_r16(Register16::HL);
                 let data = bus.read(addr)?;
                 bus.write(addr, data.wrapping_sub(1))?;
+                self.m_cycles_elapsed += 3;
             },
 
             // 16-bit register increments.
@@ -340,12 +354,14 @@ impl Cpu {
                 let addr = self.registers.get_r16(Register16::HL);
                 let value = bus.read(addr)?;
                 self.compare_a_u8(value);
+                self.m_cycles_elapsed += 2;
             }
 
             // 8-bit immediate value comparison.
             CP_A_n8 => {
                 let value = self.fetch_u8(bus)?;
                 self.compare_a_u8(value);
+                self.m_cycles_elapsed += 2;
             }
 
             // Relative jumps.
@@ -387,6 +403,7 @@ impl Cpu {
     fn load_r8_n8(&mut self, bus: &mut Bus, r: Register8) -> anyhow::Result<()> {
         let data = self.fetch_u8(bus)?;
         self.registers.set_r8(r, data);
+        self.m_cycles_elapsed += 2;
 
         Ok(())
     }
@@ -395,6 +412,7 @@ impl Cpu {
         let addr = self.registers.get_r16(r16);
         let data = self.registers.get_r8(Register8::A);
         bus.write(addr, data)?;
+        self.m_cycles_elapsed += 2;
 
         Ok(())
     }
@@ -403,6 +421,7 @@ impl Cpu {
         let addr = self.registers.get_r16(r16);
         let data = bus.read(addr)?;
         self.registers.set_r8(Register8::A, data);
+        self.m_cycles_elapsed += 2;
 
         Ok(())
     }
@@ -411,6 +430,7 @@ impl Cpu {
         let addr = self.registers.get_r16(Register16::HL);
         let data = bus.read(addr)?;
         self.registers.set_r8(r, data);
+        self.m_cycles_elapsed += 2;
 
         Ok(())
     }
@@ -419,6 +439,7 @@ impl Cpu {
         let addr = self.registers.get_r16(Register16::HL);
         let data = self.registers.get_r8(r);
         bus.write(addr, data)?;
+        self.m_cycles_elapsed += 2;
 
         Ok(())
     }
@@ -426,11 +447,13 @@ impl Cpu {
     fn load_r8_r8(&mut self, r1: Register8, r2: Register8) {
         let data = self.registers.get_r8(r2);
         self.registers.set_r8(r1, data);
+        self.m_cycles_elapsed += 1;
     }
 
     fn load_r16_n16(&mut self, bus: &mut Bus, r: Register16) -> anyhow::Result<()> {
         let data = self.fetch_u16(bus)?;
         self.registers.set_r16(r, data);
+        self.m_cycles_elapsed += 3;
 
         Ok(())
     }
@@ -445,6 +468,7 @@ impl Cpu {
         if new_value == 0 { self.registers.set_z_flag(true); }
         self.registers.set_n_flag(false);
         self.registers.set_r8(r, new_value);
+        self.m_cycles_elapsed += 1;
     }
 
     fn dec_r8(&mut self, r: Register8) {
@@ -457,27 +481,32 @@ impl Cpu {
         if new_value == 0 { self.registers.set_z_flag(true); }
         self.registers.set_n_flag(true);
         self.registers.set_r8(r, new_value);
+        self.m_cycles_elapsed += 1;
     }
 
     fn inc_r16(&mut self, r: Register16) {
         let new_value = self.registers.get_r16(r).wrapping_add(1);
         self.registers.set_r16(r, new_value);
+        self.m_cycles_elapsed += 2;
     }
 
     fn dec_r16(&mut self, r: Register16) {
         let new_value = self.registers.get_r16(r).wrapping_sub(1);
         self.registers.set_r16(r, new_value);
+        self.m_cycles_elapsed += 2;
     }
 
     fn add_hl_r16(&mut self, r: Register16) {
         let rhs = self.registers.get_r16(r);
         let value = self.registers.get_r16(Register16::HL).wrapping_add(rhs);
         self.registers.set_r16(Register16::HL, value);
+        self.m_cycles_elapsed += 2;
     }
 
     fn compare_a_r8(&mut self, r: Register8) {
         let r = self.registers.get_r8(r);
         self.compare_a_u8(r);
+        self.m_cycles_elapsed += 1;
     }
 
     fn compare_a_u8(&mut self, value: u8) {
