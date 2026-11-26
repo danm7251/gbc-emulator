@@ -1,8 +1,8 @@
 pub struct Flags {
-    pub z: bool,
-    pub n: bool,
-    pub h: bool,
-    pub c: bool,
+    zero: bool,
+    subtract: bool,
+    half_carry: bool,
+    carry: bool,
 }
 
 /// Representations of all 8-bit registers except the flag register.
@@ -22,7 +22,7 @@ pub enum Register16 {
 
 pub struct Registers {
     a: u8,
-    pub f: Flags,
+    flags: Flags,
     b: u8,
     c: u8,
     d: u8,
@@ -38,11 +38,11 @@ impl Registers {
     pub fn dmg_mode() -> Self {
         Self {
             a: 0x11,
-            f: Flags {
-                z: true,
-                n: false,
-                h: false,
-                c: false
+            flags: Flags {
+                zero: true,
+                subtract: false,
+                half_carry: false,
+                carry: false
             },
 
             b: 0x00, // Depends on Cartridge license codes.
@@ -60,11 +60,11 @@ impl Registers {
     pub fn cgb_mode() -> Self {
         Self {
             a: 0x11,
-            f: Flags {
-                z: true,
-                n: false,
-                h: false,
-                c: false
+            flags: Flags {
+                zero: true,
+                subtract: false,
+                half_carry: false,
+                carry: false
             },
 
             b: 0x00,
@@ -77,6 +77,38 @@ impl Registers {
             sp: 0xFFFE,
             pc: 0x100,
         }
+    }
+
+    pub fn get_z_flag(&self) -> bool {
+        self.flags.zero
+    }
+
+    pub fn get_n_flag(&self) -> bool {
+        self.flags.subtract
+    }
+
+    pub fn get_h_flag(&self) -> bool {
+        self.flags.half_carry
+    }
+
+    pub fn get_c_flag(&self) -> bool {
+        self.flags.carry
+    }
+
+    pub fn set_z_flag(&mut self, value: bool) {
+        self.flags.zero = value;
+    }
+
+    pub fn set_n_flag(&mut self, value: bool) {
+        self.flags.subtract = value;
+    }
+
+    pub fn set_h_flag(&mut self, value: bool) {
+        self.flags.half_carry = value;
+    }
+
+    pub fn set_c_flag(&mut self, value: bool) {
+        self.flags.carry = value;
     }
 
     pub fn get_r8(&self, r: Register8) -> u8 {
@@ -104,7 +136,7 @@ impl Registers {
 
         *r_ptr = value;
 
-        println!("[{:?} Set][{:#04X}]", r, value);
+        tracing::info!("[{:?} Set][{:#04X}]", r, value);
     }
 
     pub fn get_r16(&self, r: Register16) -> u16 {
@@ -136,7 +168,7 @@ impl Registers {
         *high_reg = high_byte;
         *low_reg = low_byte;
 
-        println!("[{:?} Set][{:#06X}]", r, value);
+        tracing::info!("[{:?} Set][{:#06X}]", r, value);
     }
 
 
@@ -146,11 +178,11 @@ impl Registers {
 
     pub fn increment_pc(&mut self) {
         self.pc = self.pc.wrapping_add(1);
-        println!("[PC Increment][{:#06X}]", self.pc);
+        tracing::info!("[PC Increment][{:#06X}]", self.pc);
     }
 
     pub fn set_pc(&mut self, value: u16) {
         self.pc = value;
-        println!("[PC Set][{:#06X}]", self.pc);
+        tracing::info!("[PC Set][{:#06X}]", self.pc);
     }
 }

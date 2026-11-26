@@ -22,6 +22,7 @@ enum IMEState {
 /// Emulates the Game Boy CPU, managing its registers, instruction execution
 /// and interactions with the system bus.
 pub struct Cpu {
+    cycle: usize,
     bus: Bus,
     registers: Registers,
     ime: IMEState,
@@ -42,6 +43,7 @@ impl Cpu {
         let ime = IMEState::Disabled;
 
         Cpu {
+            cycle: 0,
             bus,
             registers,
             ime,
@@ -51,20 +53,26 @@ impl Cpu {
     /// Advances the CPU by fetching, decoding and executing the instruction
     /// at the current program counter.
     pub fn tick(&mut self) -> anyhow::Result<()> {
+        self.cycle += 1;
+        tracing::info!("[Cycle {}]", self.cycle);
+
         let opcode = self.fetch_u8()?;
         let instruction = self.decode(opcode)?;
         self.execute(&instruction)
     }
 
     /// Fetches the next byte from memory and advances the program counter.
+    #[tracing::instrument(skip(self))]
     fn fetch_u8(&mut self) -> anyhow::Result<u8> {
-        let opcode = self.bus.read_bytes(self.registers.pc())?;
+        let data = self.bus.read_bytes(self.registers.pc())?;
+        tracing::info!("[Fetched {data:#04X} @ {:#06X}]", self.registers.pc());
         self.registers.increment_pc();
 
-        Ok(opcode)
+        Ok(data)
     }
 
     /// Fetches the next two bytes from memory as a 16-bit little-endian value.
+    #[tracing::instrument(skip(self))]
     fn fetch_u16(&mut self) -> anyhow::Result<u16> {
         let addr_low = self.fetch_u8()?;
         let addr_high = self.fetch_u8()?;
@@ -74,18 +82,19 @@ impl Cpu {
     }
 
     /// Decodes an opcode into its corresponding instruction.
+    #[tracing::instrument(skip(self, opcode))]
     fn decode(&self, opcode: u8) -> anyhow::Result<Instruction> {
         let instruction = Instruction::try_from(opcode)
             .with_context(|| format!("[CPU] : Failed to decode opcode {opcode:#04X}"))?;
 
-        #[cfg(debug_assertions)]
-        println!("\x1b[1m[Decoded][{instruction:?}]\x1b[0m");
+        tracing::info!("[{opcode:#04X} -> {instruction:?}]");
 
         Ok(instruction)
     }
 
     /// Executes the specified instruction, applying its effects to the CPU
     /// registers and memory bus.
+    #[tracing::instrument(skip(self, instruction))]
     fn execute(&mut self, instruction: &Instruction) -> anyhow::Result<()> {
         use Instruction::*;
 
@@ -96,18 +105,18 @@ impl Cpu {
             // Interrupts
             DI => {
                 self.ime = IMEState::Disabled;
-                println!("[IME Set][{:?}]", self.ime);
+                tracing::info!("[IME Set][{:?}]", self.ime);
             },
             EI => { 
                 self.ime = IMEState::Pending;
-                println!("[IME Set][{:?}]", self.ime);
+                tracing::info!("[IME Set][{:?}]", self.ime);
 
                 self.tick()?;
 
                 // If no other instruction (such as DI) has modified the IME, then enable it.
                 if self.ime == IMEState::Pending {
                     self.ime = IMEState::Enabled;
-                    println!("[IME Set][{:?}]", self.ime);
+                    tracing::info!("[IME Set][{:?}]", self.ime);
                 }
             },
 
@@ -339,10 +348,10 @@ impl Cpu {
 
             XOR_A_A => {
                 self.registers.set_r8(Register8::A, 0x00);
-                self.registers.f.z = true;
-                self.registers.f.n = false;
-                self.registers.f.h = false;
-                self.registers.f.c = false;
+                self.registers.set_z_flag(true);
+                self.registers.set_n_flag(false);
+                self.registers.set_h_flag(false);
+                self.registers.set_c_flag(false);
             }
 
             _ => anyhow::bail!("Failed to execute instruction {:?}", instruction)
@@ -403,12 +412,26 @@ impl Cpu {
     }
 
     fn inc_r8(&mut self, r: Register8) {
+        // Checks if the lower nibble will overflow.
+        if (self.registers.get_r8(r) & 0x0F) == 0x0F {
+            self.registers.set_h_flag(true);
+        }
+
         let new_value = self.registers.get_r8(r).wrapping_add(1);
+        if new_value == 0 { self.registers.set_z_flag(true); }
+        self.registers.set_n_flag(false);
         self.registers.set_r8(r, new_value);
     }
 
     fn dec_r8(&mut self, r: Register8) {
+        // Checks if the lower nibble will underflow.
+        if (self.registers.get_r8(r) & 0x0F) == 0 {
+            self.registers.set_h_flag(true);
+        }
+
         let new_value = self.registers.get_r8(r).wrapping_sub(1);
+        if new_value == 0 { self.registers.set_z_flag(true); }
+        self.registers.set_n_flag(true);
         self.registers.set_r8(r, new_value);
     }
 
@@ -449,10 +472,10 @@ impl Cpu {
     fn eval_flag_condition(&self, condition: Condition) -> bool {
         match condition {
             Condition::None => true,
-            Condition::ZeroSet => self.registers.f.z,
-            Condition::ZeroUnset => !self.registers.f.z,
-            Condition::CarrySet => self.registers.f.c,
-            Condition::CarryUnset => !self.registers.f.c,
+            Condition::ZeroSet => self.registers.get_z_flag(),
+            Condition::ZeroUnset => !self.registers.get_z_flag(),
+            Condition::CarrySet => self.registers.get_c_flag(),
+            Condition::CarryUnset => !self.registers.get_c_flag(),
         }
     }
 }

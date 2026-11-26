@@ -5,12 +5,14 @@ use crate::{cartridge::Cartridge, cpu::Cpu};
 mod bus;
 mod cartridge;
 mod cpu;
+mod io_registers;
+mod trace;
 
 fn main() -> ExitCode {
     match run() {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("[\x1b[1;31mError\x1b[0m] {e}");
+            eprintln!("{e}");
             ExitCode::FAILURE
         },
     }
@@ -29,6 +31,8 @@ fn run() -> anyhow::Result<()> {
 
     let rom_path = &args[1];
 
+    trace::init_tracing(false);
+
     // Load ROM image.
     let cartridge = Cartridge::load(rom_path)?;
 
@@ -41,10 +45,10 @@ fn run() -> anyhow::Result<()> {
     #[cfg(debug_assertions)]
     println!("Starting CPU...");
 
-    let mut cycle = 1;
     loop {
-        println!("\n-- Cycle {cycle} --");
         cpu.tick()?;
-        cycle += 1;
+
+        #[cfg(debug_assertions)]
+        println!();
     }
 }
